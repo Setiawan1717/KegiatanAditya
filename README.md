@@ -1,2 +1,0 @@
-# KegiatanAditya
-Segala Kegiatan Saya

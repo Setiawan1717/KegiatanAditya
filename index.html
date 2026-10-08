@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id" class="dark">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -60,8 +60,8 @@
                 <i data-lucide="folder-plus" class="w-4 h-4"></i> Tambah Kategori
             </button>
             <button onclick="toggleDarkMode()" class="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-slate-800/80 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
-                <i data-lucide="sun" id="theme-icon" class="w-4 h-4"></i>
-                <span id="theme-text">Mode Terang</span>
+                <i data-lucide="moon" id="theme-icon" class="w-4 h-4"></i>
+                <span id="theme-text">Mode Gelap</span>
             </button>
         </div>
     </aside>
@@ -139,7 +139,6 @@
         // ==========================================
         const GEMINI_API_KEY = ""; // PASTE API KEY ANDA DI SINI
 
-        // Kategori Default jika belum pernah disetup
         const DEFAULT_CATEGORIES = [
             { id: 'dashboard', name: 'Dashboard Pribadi', type: 'system', icon: 'home' },
             { id: 'fisika', name: 'Kuliah Fisika', type: 'kuliah', icon: 'book-open' },
@@ -152,29 +151,27 @@
         let state = {
             activeTab: 'dashboard',
             activeSub: null,
-            isDark: true,
+            isDark: JSON.parse(localStorage.getItem('mha_v4_theme')) || false, // Default Light Mode
             isMobileMenuOpen: false,
             
-            // Core Data
-            categories: JSON.parse(localStorage.getItem('mha_v3_categories')) || DEFAULT_CATEGORIES,
-            subCategories: JSON.parse(localStorage.getItem('mha_v3_subs')) || {
+            categories: JSON.parse(localStorage.getItem('mha_v4_categories')) || DEFAULT_CATEGORIES,
+            subCategories: JSON.parse(localStorage.getItem('mha_v4_subs')) || {
                 'fisika': ['Fisika Dasar', 'Mekanika Kuantum'],
                 'kopma': ['Bazar Mahasiswa', 'Rapat Rutin'],
                 'lomba': ['PKM 2024', 'Esai Nasional']
             },
-            // Tasks sekarang menampung data format tabel yang fleksibel
-            tasks: JSON.parse(localStorage.getItem('mha_v3_tasks')) || [], 
-            notesList: JSON.parse(localStorage.getItem('mha_v3_notes')) || [], 
+            tasks: JSON.parse(localStorage.getItem('mha_v4_tasks')) || [], 
+            notesList: JSON.parse(localStorage.getItem('mha_v4_notes')) || [], 
             
             calendarView: 'mingguan',
             editingNoteId: null 
         };
 
         function saveData() {
-            localStorage.setItem('mha_v3_categories', JSON.stringify(state.categories));
-            localStorage.setItem('mha_v3_subs', JSON.stringify(state.subCategories));
-            localStorage.setItem('mha_v3_tasks', JSON.stringify(state.tasks));
-            localStorage.setItem('mha_v3_notes', JSON.stringify(state.notesList));
+            localStorage.setItem('mha_v4_categories', JSON.stringify(state.categories));
+            localStorage.setItem('mha_v4_subs', JSON.stringify(state.subCategories));
+            localStorage.setItem('mha_v4_tasks', JSON.stringify(state.tasks));
+            localStorage.setItem('mha_v4_notes', JSON.stringify(state.notesList));
         }
 
         function getActiveCategoryObj() {
@@ -197,19 +194,26 @@
             }
         }
 
-        function toggleDarkMode() {
-            state.isDark = !state.isDark;
+        function syncTheme() {
             const html = document.documentElement;
+            const icon = document.getElementById('theme-icon');
+            const text = document.getElementById('theme-text');
             if (state.isDark) {
                 html.classList.add('dark');
-                document.getElementById('theme-icon').setAttribute('data-lucide', 'sun');
-                document.getElementById('theme-text').textContent = 'Mode Terang';
+                icon.setAttribute('data-lucide', 'sun');
+                text.textContent = 'Mode Terang';
             } else {
                 html.classList.remove('dark');
-                document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
-                document.getElementById('theme-text').textContent = 'Mode Gelap';
+                icon.setAttribute('data-lucide', 'moon');
+                text.textContent = 'Mode Gelap';
             }
+            localStorage.setItem('mha_v4_theme', state.isDark);
             lucide.createIcons();
+        }
+
+        function toggleDarkMode() {
+            state.isDark = !state.isDark;
+            syncTheme();
         }
 
         function switchTab(tabId) {
@@ -253,7 +257,23 @@
             saveData();
             closeCategoryModal();
             renderNavigation();
-            switchTab(id); // Langsung arahkan ke kategori baru
+            switchTab(id);
+        }
+
+        // --- FITUR DELETE KATEGORI ---
+        function deleteCategory() {
+            const catObj = getActiveCategoryObj();
+            if(!catObj || catObj.id === 'dashboard') return;
+            
+            if(confirm(`PERINGATAN!\n\nAnda yakin ingin menghapus Kategori "${catObj.name}"?\nSemua Sub-Kategori, Tugas, dan Notulensi di dalamnya akan hilang permanen.`)) {
+                state.categories = state.categories.filter(c => c.id !== catObj.id);
+                delete state.subCategories[catObj.id];
+                state.tasks = state.tasks.filter(t => t.categoryId !== catObj.id);
+                state.notesList = state.notesList.filter(n => n.categoryId !== catObj.id);
+                
+                saveData();
+                switchTab('dashboard');
+            }
         }
 
         function addSubCategory() {
@@ -271,6 +291,22 @@
                 renderWorkspace();
             }
         }
+        
+        // --- FITUR DELETE SUB KATEGORI ---
+        function deleteSubCategory() {
+            if(!state.activeSub) return;
+            if(confirm(`Yakin ingin menghapus sub-kategori "${state.activeSub}" beserta seluruh tabel & catatannya?`)) {
+                state.subCategories[state.activeTab] = state.subCategories[state.activeTab].filter(s => s !== state.activeSub);
+                state.tasks = state.tasks.filter(t => !(t.categoryId === state.activeTab && t.subCategory === state.activeSub));
+                state.notesList = state.notesList.filter(n => !(n.categoryId === state.activeTab && n.subCategory === state.activeSub));
+                
+                saveData();
+                const remainingSubs = state.subCategories[state.activeTab];
+                state.activeSub = remainingSubs && remainingSubs.length > 0 ? remainingSubs[0] : null;
+                renderWorkspace();
+            }
+        }
+
         function selectSubCategory(subName) {
             state.activeSub = subName;
             state.editingNoteId = null;
@@ -285,12 +321,11 @@
             const catObj = getActiveCategoryObj();
             const fd = new FormData(event.target);
             
-            // Bentuk objek data secara dinamis dari form
             const data = {};
             for (let [key, value] of fd.entries()) {
                 data[key] = value;
             }
-            data.progres = 'Belum'; // Default
+            data.progres = 'Belum';
 
             state.tasks.push({
                 id: Date.now().toString(),
@@ -314,7 +349,7 @@
         }
 
         function deleteTask(id) {
-            if(confirm("Hapus baris ini?")) {
+            if(confirm("Hapus baris ini dari tabel?")) {
                 state.tasks = state.tasks.filter(t => t.id !== id);
                 saveData();
                 renderWorkspace();
@@ -361,7 +396,7 @@
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-slate-800/40 dark:hover:text-gray-200'
                     }">
                     <i data-lucide="${cat.icon}" class="w-5 h-5"></i>
-                    ${cat.name}
+                    <span class="truncate text-left flex-1">${cat.name}</span>
                 </button>
             `).join('');
             lucide.createIcons();
@@ -373,7 +408,7 @@
             document.getElementById('desktop-header-title').innerHTML = `<i data-lucide="${catObj.icon}" class="w-8 h-8 text-indigo-500 mr-2"></i> ${catObj.name}`;
             
             let desc = "";
-            if(catObj.type === 'system') desc = "Ringkasan agenda dan status progres semua kategori.";
+            if(catObj.type === 'system') desc = "Ringkasan agenda, deadline terdekat, dan kalender aktivitas.";
             else if(catObj.type === 'kuliah') desc = "Tabel pencapaian materi, tugas, dan pemahaman.";
             else if(catObj.type === 'lomba') desc = "Manajemen kelengkapan berkas dan luaran kompetisi.";
             else desc = `Fokus pencapaian program kerja dan kepanitiaan ${catObj.name}.`;
@@ -383,7 +418,8 @@
 
         function renderSubCategoriesPills() {
             const subs = state.subCategories[state.activeTab] || [];
-            let html = `<div class="flex items-center gap-2 mb-6 overflow-x-auto pb-2 custom-scrollbar shrink-0 fade-in">`;
+            let html = `<div class="flex items-center gap-2 mb-6 overflow-x-auto pb-2 custom-scrollbar shrink-0 fade-in w-full">`;
+            
             subs.forEach(sub => {
                 const isActive = state.activeSub === sub;
                 html += `
@@ -393,11 +429,34 @@
                     }">${sub}</button>
                 `;
             });
+
             html += `
                 <button onclick="addSubCategory()" class="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap border-2 border-dashed border-gray-300 dark:border-slate-600 text-gray-500 hover:text-indigo-600 hover:border-indigo-400 transition-colors flex items-center">
                     <i data-lucide="plus" class="w-4 h-4 mr-1"></i> Tambah
                 </button>
-                </div>`;
+            `;
+
+            // Tombol Hapus Sub-Kategori (kecil di sebelah tambah)
+            if (state.activeSub) {
+                html += `
+                    <div class="h-6 w-px bg-gray-200 dark:bg-slate-700 mx-1"></div>
+                    <button onclick="deleteSubCategory()" class="px-3 py-2 rounded-xl text-sm font-bold whitespace-nowrap text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors flex items-center" title="Hapus Sub-Kategori ini">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+            }
+
+            // Tombol Hapus Kategori (di kanan jauh)
+            if (state.activeTab !== 'dashboard') {
+                html += `
+                    <div class="flex-1 min-w-[20px]"></div>
+                    <button onclick="deleteCategory()" class="px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap text-rose-600 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 transition-colors flex items-center shadow-sm">
+                        <i data-lucide="trash" class="w-3.5 h-3.5 mr-1.5"></i> Hapus Kategori
+                    </button>
+                `;
+            }
+
+            html += `</div>`;
             return html;
         }
 
@@ -525,14 +584,14 @@
             `;
         }
 
-        // --- DASHBOARD ---
+        // --- DASHBOARD (DENGAN KALENDER & URGENT) ---
         function renderDashboard() {
             const today = new Date();
             today.setHours(0,0,0,0);
             const next3Days = new Date(today);
             next3Days.setDate(today.getDate() + 3);
 
-            // Mapping data dinamis untuk dashboard (mencari Title & Date)
+            // Mapping data dinamis untuk dashboard
             const mapTaskForDash = (t) => {
                 let title = '', date = '';
                 if(t.type === 'organisasi') { title = t.data.keterangan; date = t.data.deadline; }
@@ -541,7 +600,9 @@
                 return { ...t, dashTitle: title, dashDate: date };
             };
 
-            const urgentTasks = state.tasks.map(mapTaskForDash).filter(t => {
+            const mappedTasks = state.tasks.map(mapTaskForDash);
+
+            const urgentTasks = mappedTasks.filter(t => {
                 if (t.data.progres === 'Selesai' || !t.dashDate) return false;
                 const due = new Date(t.dashDate);
                 due.setHours(0,0,0,0);
@@ -561,15 +622,57 @@
                     </div>
                 `).join('');
 
+            // KALENDER GENERATOR
+            let calendarHtml = '';
+            const numDays = state.calendarView === 'mingguan' ? 7 : 28;
+            for (let i = 0; i < numDays; i++) {
+                const date = new Date(today);
+                date.setDate(today.getDate() + i);
+                const dateString = date.toISOString().split('T')[0];
+                
+                // Cari tugas yang deadlinenya sama dengan tanggal kotak kalender ini
+                const dayTasks = mappedTasks.filter(t => t.dashDate === dateString && t.data.progres !== 'Selesai');
+                
+                const isToday = i === 0;
+                calendarHtml += `
+                    <div class="p-3 rounded-xl border flex flex-col ${isToday ? 'bg-indigo-50 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800/50 shadow-sm' : 'bg-white dark:bg-slate-800/40 border-gray-100 dark:border-slate-700/50'}">
+                        <div class="text-[11px] font-bold mb-3 flex items-center justify-between ${isToday ? 'text-indigo-700 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}">
+                            <span>${date.toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                            ${isToday ? '<span class="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-800/50 rounded text-[9px] uppercase">Hari Ini</span>' : ''}
+                        </div>
+                        <div class="space-y-1.5 flex-1">
+                            ${dayTasks.map(t => `
+                                <div class="text-[10px] px-2 py-1.5 bg-gray-50 dark:bg-slate-900 rounded-md text-gray-700 dark:text-gray-300 truncate border-l-2 border-indigo-500 font-medium" title="[${t.subCategory}]${t.dashTitle}">
+                                    ${t.dashTitle}
+                                </div>
+                            `).join('')}
+                            ${dayTasks.length === 0 ? '<div class="text-[10px] text-gray-300 dark:text-gray-600 italic">Kosong</div>' : ''}
+                        </div>
+                    </div>
+                `;
+            }
+
             return `
                 <div class="flex flex-col gap-6 h-full fade-in">
+                    <!-- Section Urgent -->
                     <div class="bg-gradient-to-br from-rose-50 to-orange-50 dark:from-rose-950/20 dark:to-orange-950/20 rounded-2xl border border-rose-100 dark:border-rose-900/30 p-5 md:p-6 shrink-0">
                         <h3 class="text-base md:text-lg font-bold mb-4 text-rose-700 dark:text-rose-400 flex items-center"><i data-lucide="alert-triangle" class="w-5 h-5 mr-2"></i> TUGAS URGENT (H-3)</h3>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">${urgentHtml}</div>
                     </div>
-                    <div class="bg-white dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-700/50 p-5 md:p-6 flex-1 flex flex-col items-center justify-center text-gray-400 shadow-sm min-h-[300px]">
-                        <i data-lucide="bar-chart-2" class="w-16 h-16 mb-4 opacity-20"></i>
-                        <p class="text-sm font-medium">Buka menu di sidebar untuk mengelola tabel per kategori.</p>
+                    <!-- Section Kalender -->
+                    <div class="bg-white dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-700/50 p-5 md:p-6 flex-1 flex flex-col min-h-[400px]">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                            <h3 class="text-base md:text-lg font-bold text-gray-800 dark:text-white flex items-center"><i data-lucide="calendar-days" class="w-5 h-5 mr-2 text-indigo-500"></i> Lini Masa Harian</h3>
+                            <div class="flex bg-gray-100 dark:bg-slate-900 p-1 rounded-xl">
+                                <button onclick="switchCalendarView('mingguan')" class="px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${state.calendarView === 'mingguan' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}">Mingguan</button>
+                                <button onclick="switchCalendarView('bulanan')" class="px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${state.calendarView === 'bulanan' ? 'bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}">Bulanan</button>
+                            </div>
+                        </div>
+                        <div class="flex-1 overflow-hidden flex flex-col">
+                            <div class="grid gap-3 overflow-y-auto p-1 h-full content-start ${state.calendarView === 'mingguan' ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-7' : 'grid-cols-2 sm:grid-cols-4 md:grid-cols-7'}">
+                                ${calendarHtml}
+                            </div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -669,14 +772,10 @@
 
         // INIT APP
         window.onload = () => {
+            syncTheme(); // Jalankan sinkronisasi tema pertama kali
             renderNavigation();
             renderHeader();
             renderWorkspace();
-            if (!state.isDark) {
-                document.documentElement.classList.remove('dark');
-                document.getElementById('theme-icon').setAttribute('data-lucide', 'moon');
-                document.getElementById('theme-text').textContent = 'Mode Gelap';
-            }
         };
     </script>
 </body>
